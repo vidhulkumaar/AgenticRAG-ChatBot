@@ -5,6 +5,12 @@ __pycache__/
 
 # ── Environment / Secrets ─────────────────────
 .env
+.env.local
+.env.*.local
+*.env
+**/.env
+!.env.example
+!**/.env.example
 
 # ── Virtual environments ──────────────────────
 .venv/
@@ -14,9 +20,12 @@ ENV/
 
 # ── ChromaDB vector store ─────────────────────
 chroma_db/
+**/chroma_db/
 
 # ── Uploaded data files / auto-generated text ─
 data/
+uploads/
+**/uploads/
 text_input_*.txt
 
 # ── IDE / Editor ──────────────────────────────
@@ -31,3 +40,10 @@ Thumbs.db
 # ── Logs ─────────────────────────────────────
 *.log
 logs/
+
+# ── Node / Frontend ───────────────────────────
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm
