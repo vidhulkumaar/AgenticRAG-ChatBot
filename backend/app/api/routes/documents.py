@@ -14,7 +14,7 @@ from app.services.rag_service import rag_service
 
 router = APIRouter()
 
-MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB limit per file
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit per file (free tier host constraint)
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".json", ".csv", ".docx"}
 
 @router.get("/", response_model=List[DocumentInfo])
@@ -25,7 +25,7 @@ async def list_documents():
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_documents(files: List[UploadFile] = File(...)):
-    """Upload one or more files (PDF, TXT, MD, DOCX) and index them into ChromaDB."""
+    """Upload one or more files (PDF, TXT, MD, DOCX - max 10MB) and index them into ChromaDB."""
     if not files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -52,7 +52,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
                 continue
 
             if len(content) > MAX_FILE_SIZE:
-                errors.append(f"'{file.filename}': File exceeds 15MB size limit.")
+                errors.append(f"'{file.filename}': File exceeds 10MB size limit (Free tier host).")
                 continue
 
             # Run text extraction in threadpool

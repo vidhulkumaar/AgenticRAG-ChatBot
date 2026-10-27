@@ -53,9 +53,19 @@ export default function DocumentManager({
     }
   };
 
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit for free tier host
+
   const handleFiles = async (filesList) => {
     setErrorMsg('');
     setSuccessMsg('');
+
+    // Pre-flight check: validate 10 MB limit for free tier host
+    const oversized = filesList.find(f => f.size > MAX_FILE_SIZE);
+    if (oversized) {
+      setErrorMsg(`"${oversized.name}" exceeds the 10 MB limit. Only files up to 10 MB (Text, PDF, or Word) are allowed due to free tier host limits.`);
+      return;
+    }
+
     try {
       const res = await onUploadFiles(filesList);
       if (res?.success) {
@@ -245,10 +255,27 @@ export default function DocumentManager({
 
           <div>
             <div style={{ fontSize: '14px', fontWeight: 600 }}>
-              {isProcessing ? 'Processing & Vectorizing...' : 'Drop PDF, TXT, MD, DOCX here'}
+              {isProcessing ? 'Processing & Vectorizing...' : 'Drop Text, PDF, or Word files here'}
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px' }}>
-              or click to browse files
+              Supports PDF (.pdf), Word (.docx), or Text (.txt, .md)
+            </div>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '11px',
+              color: 'var(--warning)',
+              marginTop: '6px',
+              background: 'var(--warning-bg)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              padding: '3px 9px',
+              borderRadius: 'var(--radius-sm)',
+              fontWeight: 600
+            }}>
+              <span>⚡ Max 10 MB per file</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>•</span>
+              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Free Tier Host</span>
             </div>
           </div>
 
