@@ -8,7 +8,7 @@ import numpy as np
 import chromadb
 from groq import Groq
 
-# Limit PyTorch CPU thread pools and memory allocations before model load
+# Limit CPU thread pools and memory allocations for container environments
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -28,7 +28,8 @@ class RAGService:
         self._groq_api_key = settings.GROQ_API_KEY
         self._llm_model = self.resolve_model(settings.DEFAULT_LLM_MODEL)
         self._embed_model_name = settings.EMBED_MODEL
-        self._embed_model: Optional[SentenceTransformer] = None
+        self._embed_model = None  # Strictly lazy-loaded: stays None until first upload/query
+        self._embed_backend: Optional[str] = None
         self._groq_client: Optional[Groq] = None
         
         # Init ChromaDB persistent client
@@ -92,9 +93,20 @@ class RAGService:
         except Exception as e:
             print(f"Error saving document registry: {e}")
 
+    @property
+    def is_embedding_model_loaded(self) -> bool:
+        """Check if the embedding model has been loaded into memory."""
+        return self._embed_model is not None
+
     def get_embed_model(self):
-        """Load and return embedding model with strict single-thread/low-memory limits."""
+        """Lazy-load and return the embedding model with strict single-thread/low-memory limits.
+        
+        Attempts ChromaDB's ONNXMiniLM_L6_V2 first to reduce memory footprint (~205 MB vs ~465 MB),
+        and falls back to SentenceTransformer if ONNX is unavailable.
+        Configures PyTorch and numerical-library thread limits to prevent multi-core RAM spikes.
+        """
         if self._embed_model is None:
+            # Enforce PyTorch thread limits before any model/library load
             try:
                 import torch
                 torch.set_num_threads(1)
@@ -105,34 +117,63 @@ class RAGService:
                         pass
             except ImportError:
                 pass
-            
-            from sentence_transformers import SentenceTransformer
-            print(f"[STAGE 0] Initializing embedding model '{self._embed_model_name}' on CPU...")
-            self._embed_model = SentenceTransformer(self._embed_model_name, device="cpu")
-            print("[STAGE 0] Embedding model successfully loaded.")
+
+            # Primary: ONNXMiniLM_L6_V2 (lightweight, ~205 MB peak RAM)
+            try:
+                from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+                print(f"[STAGE 0] Initializing ONNX embedding model '{self._embed_model_name}' on CPU...")
+                self._embed_model = ONNXMiniLM_L6_V2()
+                self._embed_backend = "onnx"
+                print("[STAGE 0] ONNX embedding model successfully loaded.")
+            except Exception as e:
+                print(f"[WARNING] ONNX loader failed ({e}), falling back to SentenceTransformer...")
+                from sentence_transformers import SentenceTransformer
+                print(f"[STAGE 0] Initializing SentenceTransformer model '{self._embed_model_name}' on CPU...")
+                self._embed_model = SentenceTransformer(self._embed_model_name, device="cpu")
+                self._embed_backend = "sentence_transformer"
+                print("[STAGE 0] SentenceTransformer model successfully loaded.")
+
         return self._embed_model
 
+    # Alias for backwards compatibility
+    def get_embed_fn(self):
+        return self.get_embed_model()
+
     def prewarm_embedding_model(self):
-        """Warm up embedding model during application startup to avoid first-request latency or OOM."""
+        """Warm up embedding model if explicitly called (no-op during startup)."""
         self.compute_embeddings(["warmup probe text"])
 
     def compute_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Compute embeddings in small batches with torch.inference_mode to prevent RAM spikes."""
+        """Compute embeddings in small batches with normalized vectors."""
         if not texts:
             return []
         model = self.get_embed_model()
         try:
-            import torch
-            with torch.inference_mode():
-                embeddings = model.encode(
-                    texts,
-                    batch_size=8,
-                    show_progress_bar=False,
-                    convert_to_numpy=True,
-                    normalize_embeddings=True
-                ).tolist()
+            BATCH_SIZE = 16
+            all_embeddings = []
+            for i in range(0, len(texts), BATCH_SIZE):
+                batch = texts[i:i + BATCH_SIZE]
+                if self._embed_backend == "onnx":
+                    batch_vecs = model(batch)
+                    for vec in batch_vecs:
+                        arr = np.array(vec, dtype=np.float32)
+                        norm = np.linalg.norm(arr)
+                        if norm > 0:
+                            arr = arr / norm
+                        all_embeddings.append(arr.tolist())
+                else:
+                    import torch
+                    with torch.inference_mode():
+                        batch_vecs = model.encode(
+                            batch,
+                            batch_size=8,
+                            show_progress_bar=False,
+                            convert_to_numpy=True,
+                            normalize_embeddings=True
+                        ).tolist()
+                        all_embeddings.extend(batch_vecs)
             gc.collect()
-            return embeddings
+            return all_embeddings
         except Exception as e:
             print(f"[ERROR] Embedding computation failed: {e}")
             raise

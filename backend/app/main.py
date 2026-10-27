@@ -13,15 +13,7 @@ async def lifespan(app: FastAPI):
     print(f"[INFO] ChromaDB directory: {settings.CHROMA_PERSIST_DIR}")
     print(f"[INFO] Default LLM Model: {settings.DEFAULT_LLM_MODEL}")
     print(f"[INFO] Groq configured: {rag_service.is_groq_ready}")
-    
-    # Pre-warm embedding model during startup to ensure sub-second response on uploads
-    try:
-        print("[INFO] Pre-warming embedding model...")
-        rag_service.prewarm_embedding_model()
-        print("[INFO] Embedding model ready.")
-    except Exception as e:
-        print(f"[WARNING] Non-critical warning during embedding pre-warm: {e}")
-
+    print(f"[INFO] Embedding model will be loaded lazily on first use (ONNX backend).")
     yield
     # Shutdown actions
     print("[INFO] Shutting down backend services...")
