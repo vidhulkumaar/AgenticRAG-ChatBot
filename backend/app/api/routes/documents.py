@@ -1,6 +1,8 @@
 from typing import List
 import time
+import os
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from starlette.concurrency import run_in_threadpool
 from app.models.schemas import (
     DocumentInfo,
     TextInputRequest,
@@ -11,6 +13,9 @@ from app.services.document_service import DocumentService
 from app.services.rag_service import rag_service
 
 router = APIRouter()
+
+MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB limit per file
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".json", ".csv", ".docx"}
 
 @router.get("/", response_model=List[DocumentInfo])
 async def list_documents():
@@ -24,44 +29,72 @@ async def upload_documents(files: List[UploadFile] = File(...)):
     if not files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No files provided"
+            detail="No files provided in upload request."
         )
 
     indexed_docs = []
     total_chunks = 0
+    errors = []
 
     for file in files:
+        if not file.filename:
+            continue
+
+        ext = os.path.splitext(file.filename)[-1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            errors.append(f"'{file.filename}': Unsupported format. Supported: PDF, TXT, MD, DOCX, CSV, JSON.")
+            continue
+
         try:
             content = await file.read()
-            parsed = DocumentService.extract_text(file.filename, content)
-            if not parsed:
+            if len(content) == 0:
+                errors.append(f"'{file.filename}': File is empty.")
+                continue
+
+            if len(content) > MAX_FILE_SIZE:
+                errors.append(f"'{file.filename}': File exceeds 15MB size limit.")
+                continue
+
+            # Run text extraction in threadpool
+            parsed = await run_in_threadpool(DocumentService.extract_text, file.filename, content)
+            if not parsed or not parsed.get("text"):
+                errors.append(f"'{file.filename}': No extractable text found.")
                 continue
 
             size_str = DocumentService.format_size(len(content))
             file_type = file.content_type or parsed.get("extension", "unknown")
 
-            res = rag_service.embed_and_store(
+            # Run heavy chunking, embedding, and vector storage in threadpool to keep event loop responsive
+            res = await run_in_threadpool(
+                rag_service.embed_and_store,
                 filename=file.filename,
                 doc_text=parsed["text"],
                 file_size=size_str,
                 file_type=file_type
             )
 
-            if res["doc_info"]:
+            if res.get("doc_info"):
                 indexed_docs.append(res["doc_info"])
                 total_chunks += res["chunks_added"]
+
         except Exception as e:
-            print(f"Error processing file {file.filename}: {e}")
+            print(f"[ERROR] Upload processing failure for '{file.filename}': {e}")
+            errors.append(f"'{file.filename}': Processing failed ({str(e)})")
 
     if not indexed_docs:
+        err_msg = " | ".join(errors) if errors else "Could not extract valid text from any uploaded files."
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Could not extract valid text from any of the uploaded files. Supported formats: PDF, TXT, MD, DOCX."
+            detail=err_msg
         )
+
+    success_msg = f"Successfully indexed {len(indexed_docs)} document(s) with {total_chunks} chunks."
+    if errors:
+        success_msg += f" (Warnings: {'; '.join(errors)})"
 
     return DocumentUploadResponse(
         success=True,
-        message=f"Successfully indexed {len(indexed_docs)} document(s) with {total_chunks} chunks.",
+        message=success_msg,
         indexed_documents=indexed_docs,
         total_chunks_added=total_chunks
     )
@@ -78,14 +111,19 @@ async def add_text_snippet(payload: TextInputRequest):
     filename = f"{title_slug}.txt"
     size_str = DocumentService.format_size(len(clean_text.encode("utf-8")))
 
-    res = rag_service.embed_and_store(
-        filename=filename,
-        doc_text=clean_text,
-        file_size=size_str,
-        file_type="text/plain"
-    )
+    try:
+        res = await run_in_threadpool(
+            rag_service.embed_and_store,
+            filename=filename,
+            doc_text=clean_text,
+            file_size=size_str,
+            file_type="text/plain"
+        )
+    except Exception as e:
+        print(f"[ERROR] Failed to embed snippet '{filename}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to embed and store snippet: {str(e)}")
 
-    if not res["doc_info"]:
+    if not res.get("doc_info"):
         raise HTTPException(status_code=500, detail="Failed to chunk and embed text snippet.")
 
     return DocumentUploadResponse(

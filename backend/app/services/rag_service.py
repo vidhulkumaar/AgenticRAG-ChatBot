@@ -2,11 +2,16 @@ import os
 import json
 import time
 import uuid
+import gc
 from typing import List, Dict, Any, Optional, Generator
 import numpy as np
 import chromadb
 from groq import Groq
-from sentence_transformers import SentenceTransformer
+
+# Limit PyTorch CPU thread pools and memory allocations before model load
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from app.core.config import settings
 
@@ -87,11 +92,50 @@ class RAGService:
         except Exception as e:
             print(f"Error saving document registry: {e}")
 
-    def get_embed_model(self) -> SentenceTransformer:
-        """Lazy load SentenceTransformer embedding model."""
+    def get_embed_model(self):
+        """Load and return embedding model with strict single-thread/low-memory limits."""
         if self._embed_model is None:
-            self._embed_model = SentenceTransformer(self._embed_model_name)
+            try:
+                import torch
+                torch.set_num_threads(1)
+                if hasattr(torch, "set_num_interop_threads"):
+                    try:
+                        torch.set_num_interop_threads(1)
+                    except RuntimeError:
+                        pass
+            except ImportError:
+                pass
+            
+            from sentence_transformers import SentenceTransformer
+            print(f"[STAGE 0] Initializing embedding model '{self._embed_model_name}' on CPU...")
+            self._embed_model = SentenceTransformer(self._embed_model_name, device="cpu")
+            print("[STAGE 0] Embedding model successfully loaded.")
         return self._embed_model
+
+    def prewarm_embedding_model(self):
+        """Warm up embedding model during application startup to avoid first-request latency or OOM."""
+        self.compute_embeddings(["warmup probe text"])
+
+    def compute_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Compute embeddings in small batches with torch.inference_mode to prevent RAM spikes."""
+        if not texts:
+            return []
+        model = self.get_embed_model()
+        try:
+            import torch
+            with torch.inference_mode():
+                embeddings = model.encode(
+                    texts,
+                    batch_size=8,
+                    show_progress_bar=False,
+                    convert_to_numpy=True,
+                    normalize_embeddings=True
+                ).tolist()
+            gc.collect()
+            return embeddings
+        except Exception as e:
+            print(f"[ERROR] Embedding computation failed: {e}")
+            raise
 
     def update_config(self, groq_api_key: Optional[str] = None, llm_model: Optional[str] = None):
         """Update runtime API key or LLM model."""
@@ -211,27 +255,45 @@ Text:
 
     # ── Embed & Storage ───────────────────────────────────
     def embed_and_store(self, filename: str, doc_text: str, file_size: str, file_type: str) -> Dict[str, Any]:
-        """Chunk, embed, and store document in ChromaDB and registry."""
+        """Chunk, embed, and store document in ChromaDB and registry with stage diagnostics."""
+        t_start = time.perf_counter()
+        print(f"[STAGE 1 - START] Processing file='{filename}' ({file_size}, {file_type})")
+
+        # Stage 1: Chunking
+        t_chunk_start = time.perf_counter()
         chunks = self.agentic_chunk(doc_text, filename)
+        chunk_duration = time.perf_counter() - t_chunk_start
+        print(f"[STAGE 1 - CHUNK] Created {len(chunks)} chunks in {chunk_duration:.2f}s for '{filename}'")
+
         if not chunks:
-            return {"chunks_added": 0, "doc_info": None}
+            raise ValueError(f"No valid chunks generated from file '{filename}'")
 
         texts = [c["text"] for c in chunks]
         ids = [c["id"] for c in chunks]
         metadatas = [{"source": c["source"], "chunk_index": c["chunk_index"]} for c in chunks]
 
-        # Calculate embeddings
-        embed_model = self.get_embed_model()
-        embeddings = embed_model.encode(texts).tolist()
+        # Stage 2: Embeddings
+        t_embed_start = time.perf_counter()
+        embeddings = self.compute_embeddings(texts)
+        embed_duration = time.perf_counter() - t_embed_start
+        print(f"[STAGE 2 - EMBED] Generated {len(embeddings)} vectors in {embed_duration:.2f}s for '{filename}'")
 
-        # Insert into ChromaDB
-        self.collection.add(
-            ids=ids,
-            documents=texts,
-            embeddings=embeddings,
-            metadatas=metadatas
-        )
+        # Stage 3: ChromaDB storage
+        t_store_start = time.perf_counter()
+        try:
+            self.collection.add(
+                ids=ids,
+                documents=texts,
+                embeddings=embeddings,
+                metadatas=metadatas
+            )
+        except Exception as e:
+            print(f"[ERROR - CHROMA] Failed to persist into ChromaDB: {e}")
+            raise RuntimeError(f"ChromaDB persistence failure: {e}")
+        store_duration = time.perf_counter() - t_store_start
+        print(f"[STAGE 3 - STORE] ChromaDB persisted {len(chunks)} chunks in {store_duration:.2f}s")
 
+        # Stage 4: Document registry update
         doc_info = {
             "id": str(uuid.uuid4()),
             "name": filename,
@@ -243,6 +305,9 @@ Text:
 
         self.docs_registry[filename] = doc_info
         self._save_registry()
+
+        total_duration = time.perf_counter() - t_start
+        print(f"[STAGE 4 - COMPLETE] Successfully indexed '{filename}' ({len(chunks)} chunks) in total {total_duration:.2f}s")
 
         return {
             "chunks_added": len(chunks),
@@ -298,8 +363,7 @@ Text:
         if count == 0:
             return []
 
-        embed_model = self.get_embed_model()
-        query_vec = embed_model.encode([query])[0]
+        query_vec = np.array(self.compute_embeddings([query])[0])
 
         n_results = min(fetch_k, count)
         results = self.collection.query(

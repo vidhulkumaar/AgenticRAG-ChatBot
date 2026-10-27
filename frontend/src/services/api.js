@@ -1,11 +1,51 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+const getApiBase = () => {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || '/api').trim();
+  let url = envUrl.replace(/\/+$/, '');
+  if (url.startsWith('http') && !url.endsWith('/api')) {
+    url = `${url}/api`;
+  }
+  return url;
+};
+
+const API_BASE = getApiBase();
+
+async function safeParseResponse(res, defaultErrorMsg = 'Request failed') {
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    if (data && (data.detail || data.message)) {
+      throw new Error(data.detail || data.message);
+    }
+    if (res.status === 502) {
+      throw new Error('Backend server is temporarily unavailable or restarting (502 Bad Gateway). Please retry in a moment.');
+    }
+    if (res.status === 504) {
+      throw new Error('Server request timed out (504 Gateway Timeout). The server may be busy or the file too large.');
+    }
+    if (res.status === 413) {
+      throw new Error('File exceeds the server maximum upload limit (413 Payload Too Large).');
+    }
+    throw new Error(`${defaultErrorMsg} (${res.status}): ${res.statusText || 'Server error'}`);
+  }
+
+  if (data === null) {
+    throw new Error(`Invalid server response (${res.status}): Expected JSON but received HTML.`);
+  }
+
+  return data;
+}
 
 export const api = {
   // --- Documents ---
   async getDocuments() {
     const res = await fetch(`${API_BASE}/documents/`);
-    if (!res.ok) throw new Error(`Failed to fetch documents: ${res.statusText}`);
-    return await res.json();
+    return await safeParseResponse(res, 'Failed to fetch documents');
   },
 
   async uploadDocuments(files) {
@@ -17,11 +57,7 @@ export const api = {
       method: 'POST',
       body: formData,
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Upload failed');
-    }
-    return await res.json();
+    return await safeParseResponse(res, 'Upload failed');
   },
 
   async addTextSnippet(text, title = '') {
@@ -30,27 +66,21 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, title }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Failed to add text snippet');
-    }
-    return await res.json();
+    return await safeParseResponse(res, 'Failed to add text snippet');
   },
 
   async deleteDocument(filename) {
     const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(filename)}`, {
       method: 'DELETE',
     });
-    if (!res.ok) throw new Error(`Failed to delete document: ${res.statusText}`);
-    return await res.json();
+    return await safeParseResponse(res, `Failed to delete document '${filename}'`);
   },
 
   async clearAllDocuments() {
     const res = await fetch(`${API_BASE}/documents/`, {
       method: 'DELETE',
     });
-    if (!res.ok) throw new Error(`Failed to clear documents: ${res.statusText}`);
-    return await res.json();
+    return await safeParseResponse(res, 'Failed to clear documents');
   },
 
   // --- Chat ---
@@ -66,11 +96,7 @@ export const api = {
         model,
       }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Chat query failed');
-    }
-    return await res.json();
+    return await safeParseResponse(res, 'Chat query failed');
   },
 
   async streamChatMessage({ message, topK, fetchK, lambdaMmr, model, onMetadata, onToken, onDone, onError }) {
@@ -131,8 +157,7 @@ export const api = {
   // --- System Config & Health ---
   async getConfig() {
     const res = await fetch(`${API_BASE}/config/`);
-    if (!res.ok) throw new Error('Failed to fetch config');
-    return await res.json();
+    return await safeParseResponse(res, 'Failed to fetch config');
   },
 
   async updateConfig({ groqApiKey, llmModel, topK, lambdaMmr }) {
@@ -146,13 +171,11 @@ export const api = {
         lambda_mmr: lambdaMmr,
       }),
     });
-    if (!res.ok) throw new Error('Failed to update config');
-    return await res.json();
+    return await safeParseResponse(res, 'Failed to update config');
   },
 
   async getHealth() {
     const res = await fetch(`${API_BASE}/health/`);
-    if (!res.ok) throw new Error('Health check failed');
-    return await res.json();
+    return await safeParseResponse(res, 'Health check failed');
   },
 };

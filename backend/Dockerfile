@@ -3,10 +3,15 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Set environment variables
+# Set environment variables for memory efficiency and single-threaded stability
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=8000 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MALLOC_ARENA_MAX=2 \
+    TOKENIZERS_PARALLELISM=false
 
 # Install build dependencies for chroma and sentence-transformers
 RUN apt-get update && apt-get install -y --no-install-recommends \
