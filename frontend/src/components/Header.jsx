@@ -83,7 +83,7 @@ export default function Header({
           fontSize: '12px',
           color: 'var(--warning)',
           fontWeight: 500,
-        }} title="Free Tier Host: Only 10 MB file required to send (Text, PDF, or Word)">
+        }} title="Free Tier Host: Only files up to 10 MB (Text, PDF, or Word) are allowed">
           <AlertTriangle size={14} />
           <span>Free Tier: Max 10MB</span>
         </div>

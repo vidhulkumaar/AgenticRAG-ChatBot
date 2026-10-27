@@ -43,7 +43,18 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if os.path.exists(static_path):
     from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse, JSONResponse
+
     app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
+
+    # SPA Fallback for client-side routing on page reloads
+    @app.exception_handler(404)
+    async def spa_fallback_handler(request, exc):
+        if not request.url.path.startswith(settings.API_V1_STR):
+            index_path = os.path.join(static_path, "index.html")
+            if os.path.exists(index_path):
+                return FileResponse(index_path)
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
 else:
     @app.get("/")
     def root():

@@ -109,7 +109,7 @@ export default function ChatWindow({
               alignItems: 'center',
               gap: '6px'
             }}>
-              <span>⚡ Free Tier Host: Only up to 10 MB files (Text, PDF, or Word) accepted</span>
+              <span>⚡ Free Tier Host: Only files up to 10 MB (Text, PDF, or Word) are allowed</span>
             </div>
 
             {/* Quick Starter Suggestions */}

@@ -72,3 +72,20 @@ def test_thread_pool_and_memory_environment_limits():
     assert os.environ.get("OMP_NUM_THREADS") == "1"
     assert os.environ.get("MKL_NUM_THREADS") == "1"
     assert os.environ.get("TOKENIZERS_PARALLELISM") == "false"
+
+def test_static_frontend_served_with_react():
+    """Verify that root endpoint serves the production React 18 SPA with root mount div and bundle."""
+    with TestClient(app) as client:
+        res = client.get("/")
+        assert res.status_code == 200
+        assert '<div id="root">' in res.text
+        assert 'src="/assets/index-' in res.text
+
+        # Verify SPA fallback for client-side reload
+        spa_res = client.get("/settings")
+        assert spa_res.status_code == 200
+        assert '<div id="root">' in spa_res.text
+
+        # Verify 404 on invalid API route
+        api_res = client.get("/api/nonexistent_route")
+        assert api_res.status_code == 404

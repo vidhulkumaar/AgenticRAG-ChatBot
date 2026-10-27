@@ -52,7 +52,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
                 continue
 
             if len(content) > MAX_FILE_SIZE:
-                errors.append(f"'{file.filename}': File exceeds 10MB size limit (Free tier host).")
+                errors.append(f"'{file.filename}': File exceeds 10MB limit. Only files up to 10 MB are allowed on free tier hosting.")
                 continue
 
             # Run text extraction in threadpool

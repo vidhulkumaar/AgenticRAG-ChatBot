@@ -130,7 +130,7 @@ export default function DocumentManager({
         <div>
           <span style={{ color: 'var(--warning)', fontWeight: 600 }}>Free Tier Host Notice: </span>
           <span style={{ color: 'var(--text-secondary)' }}>
-            Only <strong style={{ color: 'var(--text-primary)' }}>10 MB</strong> file is required to send (<strong style={{ color: 'var(--text-primary)' }}>Text, PDF, or Word</strong>) because it uses a free tier host.
+            Only files <strong style={{ color: 'var(--text-primary)' }}>up to 10 MB</strong> (<strong style={{ color: 'var(--text-primary)' }}>Text, PDF, or Word</strong>) are allowed because the backend runs on a free tier host.
           </span>
         </div>
       </div>
@@ -296,7 +296,7 @@ export default function DocumentManager({
               fontWeight: 600
             }}>
               <AlertTriangle size={13} color="var(--warning)" />
-              <span>Only 10 MB file is required to send (Text, PDF, or Word) — Free Tier Host</span>
+              <span>Only files up to 10 MB (Text, PDF, or Word) are allowed — Free Tier Host</span>
             </div>
           </div>
 
