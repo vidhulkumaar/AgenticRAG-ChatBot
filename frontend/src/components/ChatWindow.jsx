@@ -93,10 +93,24 @@ export default function ChatWindow({
             <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
               Autonomous RAG Chat Assistant
             </h3>
-            <p style={{ fontSize: '13.5px', maxWidth: '440px', lineHeight: '1.6', marginBottom: '24px' }}>
+            <p style={{ fontSize: '13.5px', maxWidth: '440px', lineHeight: '1.6', marginBottom: '14px' }}>
               Index documents in the left panel, then ask any question. Answers are synthesized using
               Maximal Marginal Relevance (MMR) retrieval & Groq LLaMA 3.3.
             </p>
+            <div style={{
+              fontSize: '12px',
+              color: 'var(--warning)',
+              background: 'var(--warning-bg)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              padding: '6px 14px',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: '22px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span>⚡ Free Tier Host: Only up to 10 MB files (Text, PDF, or Word) accepted</span>
+            </div>
 
             {/* Quick Starter Suggestions */}
             <div style={{

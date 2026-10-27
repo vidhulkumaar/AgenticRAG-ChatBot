@@ -71,6 +71,23 @@ export default function Header({
 
       {/* Right Action Tools */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Free Tier Host Badge */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'rgba(245, 158, 11, 0.08)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          padding: '6px 12px',
+          borderRadius: 'var(--radius-md)',
+          fontSize: '12px',
+          color: 'var(--warning)',
+          fontWeight: 500,
+        }} title="Free Tier Host: Only 10 MB file required to send (Text, PDF, or Word)">
+          <AlertTriangle size={14} />
+          <span>Free Tier: Max 10MB</span>
+        </div>
+
         {/* Knowledge Base Status Pill */}
         <div style={{
           display: 'flex',

@@ -7,6 +7,7 @@ import {
   Plus, 
   CheckCircle, 
   AlertCircle, 
+  AlertTriangle,
   File, 
   Layers, 
   Sparkles,
@@ -113,6 +114,27 @@ export default function DocumentManager({
       height: '100%',
       gap: '16px',
     }}>
+      {/* Free Tier Host Notice Banner */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '10px',
+        background: 'rgba(245, 158, 11, 0.08)',
+        border: '1px solid rgba(245, 158, 11, 0.25)',
+        padding: '10px 12px',
+        borderRadius: 'var(--radius-md)',
+        fontSize: '12px',
+        lineHeight: '1.5',
+      }}>
+        <AlertTriangle size={18} color="var(--warning)" style={{ flexShrink: 0, marginTop: '2px' }} />
+        <div>
+          <span style={{ color: 'var(--warning)', fontWeight: 600 }}>Free Tier Host Notice: </span>
+          <span style={{ color: 'var(--text-secondary)' }}>
+            Only <strong style={{ color: 'var(--text-primary)' }}>10 MB</strong> file is required to send (<strong style={{ color: 'var(--text-primary)' }}>Text, PDF, or Word</strong>) because it uses a free tier host.
+          </span>
+        </div>
+      </div>
+
       {/* Tab Switcher: Files vs Raw Text */}
       <div style={{
         display: 'flex',
@@ -263,19 +285,18 @@ export default function DocumentManager({
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '5px',
+              gap: '6px',
               fontSize: '11px',
               color: 'var(--warning)',
-              marginTop: '6px',
+              marginTop: '8px',
               background: 'var(--warning-bg)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              padding: '3px 9px',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              padding: '4px 10px',
               borderRadius: 'var(--radius-sm)',
               fontWeight: 600
             }}>
-              <span>⚡ Max 10 MB per file</span>
-              <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>•</span>
-              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Free Tier Host</span>
+              <AlertTriangle size={13} color="var(--warning)" />
+              <span>Only 10 MB file is required to send (Text, PDF, or Word) — Free Tier Host</span>
             </div>
           </div>
 
